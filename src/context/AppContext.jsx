@@ -1,31 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useReducer, useCallback, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../utils/firebase';
-import {
-  getAllAppData,
-  getAttendanceByDate,
-  getAttendanceByMonth,
-  upsertWeeklyPlan,
-  insertDDay,
-  deleteDDay,
-  updateStudentPoints,
-  upsertAttendance,
-  insertStudentRecord,
-  deleteStudentRecord,
-  updatePoll,
-  updateNewsletter,
-  upsertStudent as updateStudentMutation,
-  upsertQuickLink,
-  deleteQuickLink,
-  upsertAssignment,
-  deleteAssignment,
-  upsertAnnouncement,
-  deleteAnnouncement,
-  upsertPoll,
-  deletePoll,
-  upsertAppConfig
-} from '../lib/dataconnect';
+import { createContext, useContext, useReducer, useCallback, useEffect, useRef, useState } from 'react';
+import { generateUUID } from '../utils/helpers';
 
 const AppContext = createContext(null);
 
@@ -86,8 +61,8 @@ function reducer(state, action) {
           ...state.monthlyAttendance,
           [date]: {
             ...dateRecords,
-            [studentId]: { 
-              status, 
+            [studentId]: {
+              status,
               note: dateRecords[studentId]?.note || '',
               id: id || dateRecords[studentId]?.id
             }
@@ -100,8 +75,8 @@ function reducer(state, action) {
         ...state,
         attendance: {
           ...state.attendance,
-          [action.payload.studentId]: { 
-            status: action.payload.status, 
+          [action.payload.studentId]: {
+            status: action.payload.status,
             note: action.payload.note || '',
             id: action.payload.id || state.attendance[action.payload.studentId]?.id
           },
@@ -206,6 +181,7 @@ function reducer(state, action) {
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [isDbLoading, setIsDbLoading] = useState(true);
+  const saveTimer = useRef(null);
 
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now();
@@ -213,385 +189,195 @@ export function AppProvider({ children }) {
     setTimeout(() => dispatch({ type: 'REMOVE_TOAST', payload: id }), 3000);
   }, []);
 
+  // 최초 로드: 로컬 데이터 파일(/api/db)에서 불러오기
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await getAllAppData();
-        const {
-          students, announcements, assignments, dDays: ddays,
-          polls, studentRecords: student_records, newsletters,
-          appConfigs, quickLinks: quick_links, weeklyPlans: weekly_plans
-        } = response.data;
+        const res = await fetch('/api/db');
+        const db = await res.json();
 
-        if (students) dispatch({ type: 'SET_STUDENTS', payload: students.sort((a,b)=>a.number-b.number) });
-        if (announcements) dispatch({ type: 'SET_ANNOUNCEMENTS', payload: announcements.sort((a,b)=>new Date(b.date)-new Date(a.date)) });
-        if (assignments) dispatch({ type: 'SET_ASSIGNMENTS', payload: assignments.sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate)) });
-        if (ddays) dispatch({ type: 'SET_DDAYS', payload: ddays.sort((a,b)=>new Date(a.date)-new Date(b.date)) });
-        if (quick_links) dispatch({ type: 'SET_QUICK_LINKS', payload: quick_links });
-        if (polls) dispatch({ type: 'SET_POLLS', payload: polls });
-        if (newsletters) dispatch({ type: 'SET_NEWSLETTERS', payload: newsletters.sort((a,b)=>new Date(b.date)-new Date(a.date)) });
+        if (db.students) dispatch({ type: 'SET_STUDENTS', payload: db.students });
+        if (db.announcements) dispatch({ type: 'SET_ANNOUNCEMENTS', payload: db.announcements });
+        if (db.assignments) dispatch({ type: 'SET_ASSIGNMENTS', payload: db.assignments });
+        if (db.ddays) dispatch({ type: 'SET_DDAYS', payload: db.ddays });
+        if (db.quickLinks) dispatch({ type: 'SET_QUICK_LINKS', payload: db.quickLinks });
+        if (db.polls) dispatch({ type: 'SET_POLLS', payload: db.polls });
+        if (db.newsletters) dispatch({ type: 'SET_NEWSLETTERS', payload: db.newsletters });
+        if (db.weeklyPlans) dispatch({ type: 'SET_WEEKLY_PLANS_BULK', payload: db.weeklyPlans });
+        if (db.studentRecords) dispatch({ type: 'SET_STUDENT_RECORDS', payload: db.studentRecords });
 
-        // 출석 초기값 (오늘)
+        // 출결 기록은 날짜별로 통째로 들고 있다가(monthlyAttendance), 오늘자만 골라 현재 화면에 반영
+        const attendanceByDate = db.attendance || {};
+        dispatch({ type: 'SET_MONTHLY_ATTENDANCE', payload: attendanceByDate });
         const today = toISODate(new Date());
-        const { data: attendanceData } = await getAttendanceByDate({ date: today });
         const attMap = {};
-        if (students) {
-          students.forEach(s => { attMap[s.id] = { status: 'present', note: '' }; });
-        }
-        if (attendanceData && attendanceData.attendances) {
-          attendanceData.attendances.forEach(a => {
-            attMap[a.student.id] = { status: a.status, note: a.note || '' };
-          });
-        }
+        (db.students || []).forEach(s => { attMap[s.id] = { status: 'present', note: '' }; });
+        Object.assign(attMap, attendanceByDate[today] || {});
         dispatch({ type: 'SET_ATTENDANCE_MAP', payload: attMap });
 
-        // 주간 계획 매핑
-        if (weekly_plans) {
-          const plansMap = {};
-          weekly_plans.forEach(p => {
-            if (!plansMap[p.weekKey]) plansMap[p.weekKey] = {};
-            if (!plansMap[p.weekKey][p.day]) plansMap[p.weekKey][p.day] = {};
-            plansMap[p.weekKey][p.day][p.period] = { subject: p.subject, content: p.content };
-          });
-          dispatch({ type: 'SET_WEEKLY_PLANS_BULK', payload: plansMap });
-        }
-
-
-
-        // 학생 기록 매핑
-        if (student_records) {
-          const recordsMap = {};
-          student_records.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).forEach(r => {
-            if (!recordsMap[r.student.id]) recordsMap[r.student.id] = [];
-            recordsMap[r.student.id].push({
-              id: r.id, type: r.type, content: r.content,
-              date: r.date, category: r.category || ''
-            });
-          });
-          dispatch({ type: 'SET_STUDENT_RECORDS', payload: recordsMap });
-        }
-
-        // 설정 복원
-        let mergedSettings = { ...initialState.settings };
-        const app_configs = appConfigs && appConfigs.length > 0 ? appConfigs[0] : null;
-        if (app_configs) {
-          // DB에서 가져온 값이 null이 아닐 때만 기존 설정을 덮어씀 (초기화 방지)
-          Object.keys(app_configs).forEach(key => {
-            if (app_configs[key] !== null && app_configs[key] !== undefined) {
-              mergedSettings[key] = app_configs[key];
-            }
-          });
-        }
-        dispatch({ type: 'UPDATE_SETTINGS', payload: mergedSettings });
-
+        if (db.settings) dispatch({ type: 'UPDATE_SETTINGS', payload: db.settings });
       } catch (err) {
-        console.error('DB Fetch Error:', err);
-        showToast('데이터베이스를 불러오는 데 실패했습니다.', 'error');
+        console.error('로컬 데이터 로드 오류:', err);
+        showToast('데이터를 불러오는 데 실패했습니다.', 'error');
       } finally {
         setIsDbLoading(false);
       }
     }
     fetchData();
 
-    // Auth state listener
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      dispatch({ type: 'TOGGLE_ADMIN', payload: !!user });
-    });
-    return () => unsubscribe();
+    // 선생님 모드 여부는 이 브라우저에만 저장 (로컬 전용 환경)
+    if (localStorage.getItem('isAdmin') === 'true') {
+      dispatch({ type: 'TOGGLE_ADMIN', payload: true });
+    }
   }, [showToast]);
 
-  // DB 연동 액션들
-  const saveWeeklyPlan = useCallback(async (weekKey, day, period, subject, content) => {
+  // 상태가 바뀔 때마다 로컬 데이터 파일(/api/db)에 저장 (디바운스)
+  useEffect(() => {
+    if (isDbLoading) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const payload = {
+        students: state.students,
+        attendance: state.monthlyAttendance,
+        announcements: state.announcements,
+        assignments: state.assignments,
+        ddays: state.ddays,
+        polls: state.polls,
+        newsletters: state.newsletters,
+        quickLinks: state.quickLinks,
+        weeklyPlans: state.weeklyPlans,
+        studentRecords: state.studentRecords,
+        settings: state.settings,
+      };
+      fetch('/api/db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(err => console.error('로컬 저장 오류:', err));
+    }, 500);
+    return () => clearTimeout(saveTimer.current);
+  }, [state, isDbLoading]);
+
+  const saveWeeklyPlan = useCallback((weekKey, day, period, subject, content) => {
     dispatch({ type: 'SET_WEEKLY_PLAN', payload: { weekKey, day, period, subject, content } });
-    try {
-      await upsertWeeklyPlan({ weekKey, day, period, subject, content });
-    } catch (error) {
-      console.error('Weekly plan save error:', error);
-    }
   }, []);
 
-  const addDDay = async (dday) => {
-    try {
-      const response = await insertDDay({ name: dday.name, date: dday.date });
-      if (response && response.data && response.data.dDay_insert) {
-        dispatch({ type: 'ADD_DDAY', payload: { id: response.data.dDay_insert, name: dday.name, date: dday.date } });
-      }
-    } catch (error) {
-      console.error('DDay save error:', error);
-    }
+  const addDDay = (dday) => {
+    dispatch({ type: 'ADD_DDAY', payload: { id: generateUUID(), name: dday.name, date: dday.date, emoji: dday.emoji } });
   };
 
-  const deleteDDayFunc = async (id) => {
+  const deleteDDayFunc = (id) => {
     dispatch({ type: 'DELETE_DDAY', payload: id });
-    await deleteDDay({ id });
   };
 
-  const updatePointsFunc = async (studentId, currentPoints, amount) => {
-    const newPoints = Math.max(0, currentPoints + amount);
+  const updatePointsFunc = (studentId, _currentPoints, amount) => {
     dispatch({ type: 'UPDATE_POINTS', payload: { studentId, amount } });
-    await updateStudentPoints({ id: studentId, points: newPoints });
   };
 
-  const resetPointsFunc = async (studentId) => {
+  const resetPointsFunc = (studentId) => {
     dispatch({ type: 'RESET_POINTS', payload: { studentId } });
-    await updateStudentPoints({ id: studentId, points: 0 });
   };
 
-  const updateAttendanceFunc = async (studentId, status, note = '', date = null) => {
+  const updateAttendanceFunc = (studentId, status, note = '', date = null) => {
     const targetDate = date || toISODate(new Date());
-    
-    // 데이터베이스가 복합 고유 키(studentId, date)로 알아서 식별/업데이트하므로
-    // 더 이상 id를 찾아서 전달할 필요가 없습니다.
     dispatch({ type: 'SET_ATTENDANCE', payload: { studentId, status, note, id: '' } });
     dispatch({ type: 'UPDATE_MONTHLY_ATTENDANCE', payload: { date: targetDate, studentId, status, id: '' } });
-    
-    const vars = { studentId, date: targetDate, status, note };
-
-    try {
-      const res = await upsertAttendance(vars);
-      if (res.errors) {
-        console.error('Upsert attendance GraphQL error:', res.errors);
-        dispatch({ type: 'SET_TOAST', payload: { message: '출석 저장 중 GraphQL 오류가 발생했습니다: ' + JSON.stringify(res.errors), type: 'error' } });
-        setTimeout(() => dispatch({ type: 'SET_TOAST', payload: null }), 5000);
-        return;
-      }
-    } catch (error) {
-      console.error("Error upserting attendance: ", error);
-      dispatch({ type: 'SET_TOAST', payload: { message: '출석 저장 중 오류가 발생했습니다.', type: 'error' } });
-      setTimeout(() => dispatch({ type: 'SET_TOAST', payload: null }), 3000);
-    }
   };
 
-  const loadAttendanceByDateFunc = useCallback(async (date) => {
+  // 모든 출결 기록은 이미 monthlyAttendance에 로컬로 전부 들고 있으므로, 서버 조회 없이 바로 조회 가능
+  const loadAttendanceByDateFunc = useCallback((date) => {
     dispatch({ type: 'SET_SELECTED_ATTENDANCE_DATE', payload: date });
-    try {
-      const { data } = await getAttendanceByDate({ date });
-      const attMap = {};
-      state.students.forEach(s => { attMap[s.id] = { status: 'present', note: '' }; });
-      if (data && data.attendances) {
-        data.attendances.forEach(a => {
-          attMap[a.student.id] = { status: a.status, note: a.note || '' };
-        });
-      }
-      dispatch({ type: 'SET_ATTENDANCE_MAP', payload: attMap });
-    } catch (error) {
-      console.error('Load attendance error:', error);
-    }
-  }, [state.students]);
+    const attMap = {};
+    state.students.forEach(s => { attMap[s.id] = { status: 'present', note: '' }; });
+    Object.assign(attMap, state.monthlyAttendance[date] || {});
+    dispatch({ type: 'SET_ATTENDANCE_MAP', payload: attMap });
+  }, [state.students, state.monthlyAttendance]);
 
-  const loadMonthlyAttendanceFunc = useCallback(async (year, month) => {
-    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${new Date(year, month + 1, 0).getDate()}`;
-    try {
-      const { data } = await getAttendanceByMonth({ startDate, endDate });
-      const monthly = {};
-      if (data && data.attendances) {
-        data.attendances.forEach(a => {
-          const d = a.date.split('T')[0];
-          if (!monthly[d]) monthly[d] = {};
-          monthly[d][a.student.id] = { status: a.status, note: a.note || '' };
-        });
-      }
-      dispatch({ type: 'SET_MONTHLY_ATTENDANCE', payload: monthly });
-    } catch (error) {
-      console.error('Load monthly attendance error:', error);
-    }
-  }, []);
+  // 모든 데이터가 이미 로컬에 로드돼 있어 별도 조회가 필요 없음 (호환성 유지를 위한 빈 함수)
+  const loadMonthlyAttendanceFunc = useCallback(() => {}, []);
 
-  const addStudentRecordFunc = async (studentId, type, content, category = '') => {
+  const addStudentRecordFunc = (studentId, type, content, category = '') => {
     const date = toISODate(new Date());
-    try {
-      const { data } = await insertStudentRecord({ studentId, type, content, category, date });
-      if (data && data.studentRecord_insert) {
-        dispatch({ type: 'ADD_STUDENT_RECORD', payload: { studentId, record: { id: data.studentRecord_insert, type, content, category, date } } });
-        showToast('기록이 저장되었습니다.', 'success');
-      }
-    } catch (error) {
-      console.error('Add student record error:', error);
-      showToast('기록 저장에 실패했습니다.', 'error');
-    }
+    const record = { id: generateUUID(), type, content, category, date };
+    dispatch({ type: 'ADD_STUDENT_RECORD', payload: { studentId, record } });
+    showToast('기록이 저장되었습니다.', 'success');
   };
 
-  const deleteStudentRecordFunc = async (studentId, recordId) => {
+  const deleteStudentRecordFunc = (studentId, recordId) => {
     dispatch({ type: 'DELETE_STUDENT_RECORD', payload: { studentId, recordId } });
-    await deleteStudentRecord({ id: recordId });
   };
 
-  const updateStudentFunc = async (studentData) => {
+  const updateStudentFunc = (studentData) => {
     dispatch({ type: 'UPDATE_STUDENT', payload: studentData });
-    const { id, name, number, gender, birthday, parentPhone, allergies, healthNotes, points, group, seatIndex, aiSummary } = studentData;
-    await updateStudentMutation({ id, name, number, gender, birthday, parentPhone, allergies, healthNotes, points, group, seatIndex, aiSummary });
   };
 
-  const bulkUpdateStudentsFunc = async (updates) => {
+  const bulkUpdateStudentsFunc = (updates) => {
     dispatch({ type: 'BULK_UPDATE_STUDENTS', payload: updates });
-    for (const u of updates) {
-      const { id, name, number, gender, birthday, parentPhone, allergies, healthNotes, points, group, seatIndex, aiSummary } = u;
-      await updateStudentMutation({ id, name, number, gender, birthday, parentPhone, allergies, healthNotes, points, group, seatIndex, aiSummary });
-    }
   };
 
-  const votePollFunc = async (pollId, optionIndex) => {
+  const votePollFunc = (pollId, optionIndex) => {
     const poll = state.polls.find(p => p.id === pollId);
     if (!poll) return;
     const newVotes = [...poll.votes];
     newVotes[optionIndex] += 1;
     dispatch({ type: 'VOTE_POLL', payload: { pollId, newVotes } });
-    await updatePoll({ id: pollId, votes: newVotes });
   };
 
-  const collectNewsletterFunc = async (id, newCollected) => {
+  const collectNewsletterFunc = (id, newCollected) => {
     dispatch({ type: 'COLLECT_NEWSLETTER', payload: { id, collected: newCollected } });
-    await updateNewsletter({ id, collected: newCollected });
   };
 
-  const addLinkFunc = async (linkData) => {
+  const addLinkFunc = (linkData) => {
     dispatch({ type: 'ADD_LINK', payload: linkData });
-    try {
-      await upsertQuickLink({
-        id: linkData.id,
-        title: linkData.title,
-        url: linkData.url,
-        icon: linkData.icon || '🔗',
-        desc: linkData.desc || null
-      });
-    } catch(e) { console.error('Add Link Error:', e); }
   };
 
-  const updateLinkFunc = async (linkData) => {
+  const updateLinkFunc = (linkData) => {
     dispatch({ type: 'UPDATE_LINK', payload: linkData });
-    try {
-      await upsertQuickLink({
-        id: linkData.id,
-        title: linkData.title,
-        url: linkData.url,
-        icon: linkData.icon || '🔗',
-        desc: linkData.desc || null
-      });
-    } catch(e) { console.error('Update Link Error:', e); }
   };
 
-  const deleteLinkFunc = async (id) => {
+  const deleteLinkFunc = (id) => {
     dispatch({ type: 'DELETE_LINK', payload: id });
-    try {
-      await deleteQuickLink({ id });
-    } catch(e) { console.error(e); }
   };
 
-  const addAssignmentFunc = async (assignment) => {
+  const addAssignmentFunc = (assignment) => {
     dispatch({ type: 'ADD_ASSIGNMENT', payload: assignment });
-    try {
-      await upsertAssignment({
-        id: assignment.id,
-        dueDate: assignment.dueDate,
-        title: assignment.title,
-        subject: assignment.subject || '',
-        type: assignment.type || '일반',
-        createdAt: new Date().toISOString(),
-        submissions: assignment.submissions
-      });
-    } catch (e) {
-      console.error('Failed to upsert assignment:', e);
-    }
   };
 
-  const updateAssignmentSubmissionsFunc = async (id, submissions) => {
+  const updateAssignmentSubmissionsFunc = (id, submissions) => {
     dispatch({ type: 'UPDATE_ASSIGNMENT_SUBMISSIONS', payload: { id, submissions } });
-    const target = state.assignments.find(a => a.id === id);
-    if (target) {
-      const merged = { ...target.submissions, ...submissions };
-      await upsertAssignment({
-        id: target.id,
-        dueDate: target.dueDate,
-        title: target.title,
-        subject: target.subject || '',
-        type: target.type || '일반',
-        createdAt: target.createdAt || new Date().toISOString(),
-        submissions: merged
-      });
-    }
   };
 
-  const deleteAssignmentFunc = async (id) => {
+  const deleteAssignmentFunc = (id) => {
     dispatch({ type: 'DELETE_ASSIGNMENT', payload: id });
-    try {
-      await deleteAssignment({ id });
-    } catch(e) { console.error(e); }
   };
 
-  const addAnnouncementFunc = async (announcementData) => {
-    try {
-      await upsertAnnouncement({
-        id: announcementData.id,
-        date: announcementData.date,
-        title: announcementData.title,
-        content: announcementData.content,
-        type: announcementData.type
-      });
-      dispatch({ type: 'ADD_ANNOUNCEMENT', payload: announcementData });
-    } catch(e) { console.error('Add announcement error:', e); }
+  const addAnnouncementFunc = (announcementData) => {
+    dispatch({ type: 'ADD_ANNOUNCEMENT', payload: announcementData });
   };
 
-  const updateAnnouncementFunc = async (announcementData) => {
-    try {
-      await upsertAnnouncement({
-        id: announcementData.id,
-        date: announcementData.date,
-        title: announcementData.title,
-        content: announcementData.content,
-        type: announcementData.type
-      });
-      dispatch({ type: 'UPDATE_ANNOUNCEMENT', payload: announcementData });
-    } catch(e) { console.error('Update announcement error:', e); }
+  const updateAnnouncementFunc = (announcementData) => {
+    dispatch({ type: 'UPDATE_ANNOUNCEMENT', payload: announcementData });
   };
 
-  const deleteAnnouncementFunc = async (id) => {
-    try {
-      await deleteAnnouncement({ id });
-      dispatch({ type: 'DELETE_ANNOUNCEMENT', payload: id });
-    } catch(e) { console.error('Delete announcement error:', e); }
+  const deleteAnnouncementFunc = (id) => {
+    dispatch({ type: 'DELETE_ANNOUNCEMENT', payload: id });
   };
 
-  const addPollFunc = async (pollData) => {
-    try {
-      await upsertPoll({
-        id: pollData.id,
-        question: pollData.question,
-        options: pollData.options,
-        votes: pollData.votes
-      });
-      dispatch({ type: 'ADD_POLL', payload: pollData });
-    } catch(e) { console.error('Add poll error:', e); }
+  const addPollFunc = (pollData) => {
+    dispatch({ type: 'ADD_POLL', payload: pollData });
   };
 
-  const deletePollFunc = async (id) => {
-    try {
-      await deletePoll({ id });
-      dispatch({ type: 'DELETE_POLL', payload: id });
-    } catch(e) { console.error('Delete poll error:', e); }
+  const deletePollFunc = (id) => {
+    dispatch({ type: 'DELETE_POLL', payload: id });
   };
 
-  const updateSettingsFunc = async (newSettings) => {
+  const updateSettingsFunc = (newSettings) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: newSettings });
-    try {
-      await upsertAppConfig({
-        id: 1,
-        calendarId1: newSettings.calendarId1,
-        calendarId2: newSettings.calendarId2,
-        calendarId3: newSettings.calendarId3,
-        thermometerGoal: newSettings.thermometerGoal,
-        thermometerReward: newSettings.thermometerReward,
-        dashboardLayouts: newSettings.dashboardLayouts
-      });
-    } catch (error) {
-      console.error('Update AppConfig error:', error);
-      showToast('설정 저장에 실패했습니다.', 'error');
-    }
   };
 
   return (
     <AppContext.Provider value={{
-      state, dispatch, showToast, 
+      state, dispatch, showToast,
       updatePoints: updatePointsFunc, resetPoints: resetPointsFunc,
       updateAttendance: updateAttendanceFunc, loadAttendanceByDate: loadAttendanceByDateFunc, loadMonthlyAttendance: loadMonthlyAttendanceFunc,
       updateStudent: updateStudentFunc, bulkUpdateStudents: bulkUpdateStudentsFunc, addStudentRecord: addStudentRecordFunc, deleteStudentRecord: deleteStudentRecordFunc,

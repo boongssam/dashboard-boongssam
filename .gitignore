@@ -27,3 +27,7 @@ dist-ssr
 .next/
 out/
 build/
+
+# Local data (학생 개인정보 포함, 커밋 금지)
+/data/db.json
+.env.local

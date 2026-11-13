@@ -1,42 +1,40 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { auth } from '../utils/firebase';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 export function useAdminMode() {
   const { state, dispatch, showToast } = useApp();
   const { isAdmin } = state;
   const [showPinModal, setShowPinModal] = useState(false);
-  const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
 
-  const login = async (email, password) => {
+  const login = async (password) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setShowPinModal(false);
-      setEmailInput('');
-      setPasswordInput('');
-      showToast('교사 모드로 전환되었습니다.', 'success');
-      dispatch({ type: 'TOGGLE_ADMIN', payload: true });
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+
+      if (data.ok) {
+        localStorage.setItem('isAdmin', 'true');
+        setShowPinModal(false);
+        setPasswordInput('');
+        showToast('교사 모드로 전환되었습니다.', 'success');
+        dispatch({ type: 'TOGGLE_ADMIN', payload: true });
+      } else {
+        showToast(data.error || '비밀번호가 틀렸습니다.', 'error');
+      }
     } catch (error) {
       console.error('Login error:', error);
-      
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        showToast('등록되지 않은 계정이거나 비밀번호가 틀렸습니다.', 'error');
-      } else {
-        showToast(`로그인 실패: ${error.message}`, 'error');
-      }
+      showToast('로그인 중 오류가 발생했습니다.', 'error');
     }
   };
 
-  const logout = async () => {
-    try {
-      await signOut(auth);
-      dispatch({ type: 'TOGGLE_ADMIN', payload: false });
-      showToast('학생 모드로 전환되었습니다.', 'info');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
+  const logout = () => {
+    localStorage.removeItem('isAdmin');
+    dispatch({ type: 'TOGGLE_ADMIN', payload: false });
+    showToast('학생 모드로 전환되었습니다.', 'info');
   };
 
   const toggle = () => {
@@ -51,8 +49,6 @@ export function useAdminMode() {
     isAdmin,
     showPinModal,
     setShowPinModal,
-    emailInput,
-    setEmailInput,
     passwordInput,
     setPasswordInput,
     login,

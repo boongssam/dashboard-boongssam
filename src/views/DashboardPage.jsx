@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { getDayName, getDday, isTodayBirthday, getCurrentPeriod, generateUUID } from '../utils/helpers';
-import { fetchTodayLunch } from '../utils/neisApi';
+import { fetchTodayLunch, fetchSchoolHoliday } from '../utils/neisApi';
 import { getWeekStart, toISODate } from '../context/AppContext';
 import Thermometer from '../components/common/Thermometer';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
@@ -72,6 +72,7 @@ export default function DashboardPage() {
             static: false // 강제로 static(고정) 속성을 비활성화하여 이동 가능하도록 함
           }));
         });
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLayouts(parsed);
       } catch (e) {
         console.error('Failed to parse dashboard layouts from DB:', e);
@@ -84,6 +85,7 @@ export default function DashboardPage() {
 
   const [lunchInfo, setLunchInfo] = useState(null);
   const [isLoadingLunch, setIsLoadingLunch] = useState(true);
+  const [holiday, setHoliday] = useState(null);
   const [showDdayForm, setShowDdayForm] = useState(false);
   const [newDday, setNewDday] = useState({ name: '', date: '', emoji: '🎉' });
 
@@ -95,6 +97,12 @@ export default function DashboardPage() {
       setIsLoadingLunch(false);
     }
     loadLunch();
+
+    async function loadHoliday() {
+      const data = await fetchSchoolHoliday();
+      setHoliday(data);
+    }
+    loadHoliday();
   }, []);
 
   // 공지사항 관리 상태 (CalendarPage에서 이동)
@@ -210,6 +218,17 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-page">
+      {/* School Holiday Alert (NEIS 학사일정) */}
+      {holiday?.isHoliday && (
+        <div className="birthday-card">
+          <span className="birthday-emoji">🏖️</span>
+          <div className="birthday-text">
+            <div className="birthday-name">오늘은 학사일정상 휴업일입니다: {holiday.name}</div>
+            <div className="birthday-sub">출석 체크가 필요 없는 날일 수 있어요.</div>
+          </div>
+        </div>
+      )}
+
       {/* Birthday Alert */}
       {birthdayStudents.length > 0 && (
         <div className="birthday-card">

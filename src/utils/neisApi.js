@@ -6,6 +6,7 @@
 const ATPT_OFCDC_SC_CODE = 'F10'; // 광주광역시교육청
 const SD_SCHUL_CODE = '7401158'; // 하남중앙초등학교
 const BASE_URL = 'https://open.neis.go.kr/hub/mealServiceDietInfo';
+const SCHEDULE_URL = 'https://open.neis.go.kr/hub/SchoolSchedule';
 
 /**
  * YYYYMMDD 형식의 날짜 문자열 반환
@@ -50,6 +51,35 @@ export async function fetchTodayLunch(date = getTodayString()) {
     }
   } catch (error) {
     console.error('급식 정보를 가져오는 중 오류 발생:', error);
+    return null;
+  }
+}
+
+/**
+ * 오늘(또는 지정된 날짜)이 학사일정상 휴업일(방학, 공휴일 등)인지 확인합니다.
+ * @param {string} date - YYYYMMDD 형식의 날짜 (생략 시 오늘 날짜)
+ * @returns {Promise<{isHoliday: boolean, name: string} | null>}
+ */
+export async function fetchSchoolHoliday(date = getTodayString()) {
+  try {
+    const url = `${SCHEDULE_URL}?Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ATPT_OFCDC_SC_CODE}&SD_SCHUL_CODE=${SD_SCHUL_CODE}&AA_YMD=${date}`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('네트워크 응답이 정상이 아닙니다.');
+    }
+
+    const data = await response.json();
+
+    if (data.SchoolSchedule) {
+      const row = data.SchoolSchedule[1].row.find(r => r.SBTR_DD_SC_NM === '휴업일');
+      if (row) {
+        return { isHoliday: true, name: row.EVENT_NM || '휴업일' };
+      }
+    }
+    return { isHoliday: false, name: '' };
+  } catch (error) {
+    console.error('학사일정 정보를 가져오는 중 오류 발생:', error);
     return null;
   }
 }

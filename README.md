@@ -1,16 +1,26 @@
-# React + Vite
+# 붕쌤 학급 대시보드
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+초등교사용 학급 대시보드. 로컬 전용(Firebase 없음)으로 동작합니다.
 
-Currently, two official plugins are available:
+## 로컬 실행
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. 의존성 설치
+   ```bash
+   npm install
+   ```
+2. `.env.local` 파일 생성 (프로젝트 루트):
+   ```
+   GEMINI_API_KEY=여기에 Gemini API 키
+   ADMIN_PASSWORD=선생님 로그인 비밀번호
+   ```
+3. 개발 서버 실행
+   ```bash
+   npm run dev
+   ```
+   브라우저에서 `http://localhost:3000` 접속.
 
-## React Compiler
+## 데이터 저장
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 학생/출석/공지/과제/주간계획 등 모든 데이터는 `data/db.json`에 로컬 파일로 저장됩니다(커밋되지 않음).
+- 학생 명단은 "학생 관리" 페이지에서 엑셀(.xlsx)로 업로드/다운로드할 수 있습니다.
+- 인터넷이 필요한 기능: Gemini AI 종합의견 생성, NEIS 급식/학사일정 조회. 나머지 기능은 전부 오프라인으로 동작합니다.

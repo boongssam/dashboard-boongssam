@@ -47,7 +47,7 @@ export default function Layout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const pathname = usePathname();
-  const { isAdmin, showPinModal, setShowPinModal, emailInput, setEmailInput, passwordInput, setPasswordInput, login, toggle } = useAdminMode();
+  const { isAdmin, showPinModal, setShowPinModal, passwordInput, setPasswordInput, login, toggle } = useAdminMode();
 
   const pageTitle = PAGE_TITLES[pathname] || '대시보드';
 
@@ -167,17 +167,6 @@ export default function Layout({ children }) {
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-light)' }}>이메일</label>
-                <input
-                  type="email"
-                  className="form-input"
-                  placeholder="teacher@school.com"
-                  value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div>
                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-light)' }}>비밀번호</label>
                 <input
                   type="password"
@@ -185,12 +174,13 @@ export default function Layout({ children }) {
                   placeholder="비밀번호"
                   value={passwordInput}
                   onChange={e => setPasswordInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && login(emailInput, passwordInput)}
+                  onKeyDown={e => e.key === 'Enter' && login(passwordInput)}
+                  autoFocus
                 />
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => login(emailInput, passwordInput)}>로그인</button>
+              <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => login(passwordInput)}>로그인</button>
             </div>
           </div>
         </div>
