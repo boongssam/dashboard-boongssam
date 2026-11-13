@@ -12,6 +12,8 @@ export default function LearningPage() {
   const [tempActivityContent, setTempActivityContent] = useState('');
   const [tempActivityType, setTempActivityType] = useState('과제');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  // 아래 목록에서 과제를 선택하면 체크 그리드도 그 과제 기준으로 바뀌고, 선택을 풀면 최신 활동으로 돌아감
+  const activeActivity = selectedAssignment || currentActivity;
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
@@ -25,28 +27,24 @@ export default function LearningPage() {
   }, []);
 
   const handlePointerDown = (studentId) => {
-    if (!currentActivity) return;
+    if (!activeActivity) return;
     timerRef.current = setTimeout(() => {
-      if (currentActivity.submissions?.[studentId]) {
+      if (activeActivity.submissions?.[studentId]) {
         // 체크 해제
-        const newSubmissions = { ...currentActivity.submissions };
-        delete newSubmissions[studentId];
-        updateAssignmentSubmissions(currentActivity.id, { [studentId]: null }); // null을 통해 서버에서 삭제 처리하게끔 하는 것은 아니지만 객체 덮어쓰기이므로 로컬엔 반영됨. 단, DataConnect에서 부분 삭제가 어려우면, 아예 새 객체로 통째로 갈아끼우거나 여기서는 프론트엔드 상태 반영만 함.
-        // Wait, updateAssignmentSubmissions merges submissions. If we want to delete, we need a way to pass the whole object.
-        // Let's pass undefined or handle it in AppContext.
+        updateAssignmentSubmissions(activeActivity.id, { [studentId]: null });
       }
       timerRef.current = null;
     }, 500);
   };
 
   const handlePointerUp = (studentId) => {
-    if (!currentActivity) return;
+    if (!activeActivity) return;
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
-      if (!currentActivity.submissions?.[studentId]) {
+      if (!activeActivity.submissions?.[studentId]) {
         // 체크 (제출 처리)
-        updateAssignmentSubmissions(currentActivity.id, { [studentId]: { timestamp: new Date().toISOString() } });
+        updateAssignmentSubmissions(activeActivity.id, { [studentId]: { timestamp: new Date().toISOString() } });
       }
     }
   };
@@ -106,6 +104,7 @@ export default function LearningPage() {
                       total: students.length,
                     });
                     showToast('새로운 활동이 추가되었습니다.', 'success');
+                    setSelectedAssignment(null);
                   }
                   setIsEditingActivity(false);
                 }}>저장</button>
@@ -119,11 +118,11 @@ export default function LearningPage() {
           ) : (
             <div className="activity-view-mode">
               <div className="activity-text">
-                {currentActivity ? (
+                {activeActivity ? (
                   <>
-                    <span className={`badge ${currentActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`}>{currentActivity.type || '수행평가'}</span>
-                    <span className="activity-label" style={{ marginLeft: '0.5rem' }}>활동 내용:</span>
-                    <span className="activity-value">{currentActivity.title}</span>
+                    <span className={`badge ${activeActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`}>{activeActivity.type || '수행평가'}</span>
+                    <span className="activity-label" style={{ marginLeft: '0.5rem' }}>{selectedAssignment ? '선택한 과제:' : '활동 내용:'}</span>
+                    <span className="activity-value">{activeActivity.title}</span>
                   </>
                 ) : (
                   <span className="activity-value">현재 등록된 활동이 없습니다. 새로 추가해 주세요.</span>
@@ -142,7 +141,7 @@ export default function LearningPage() {
 
         <div className="activity-students-grid">
           {students.map(student => {
-            const isCompleted = !!currentActivity?.submissions?.[student.id];
+            const isCompleted = !!activeActivity?.submissions?.[student.id];
             return (
               <div
                 key={student.id}
@@ -174,7 +173,7 @@ export default function LearningPage() {
           const pct = Math.round((submittedCount / total) * 100);
           const remaining = total - submittedCount;
           return (
-            <div key={a.id} className="assignment-card clickable" onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)} style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div key={a.id} className="assignment-card clickable" onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)} style={{ flexDirection: 'column', alignItems: 'flex-start', outline: selectedAssignment?.id === a.id ? '2px solid var(--primary)' : 'none' }}>
               <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '1rem' }}>
                 <div className="assignment-icon" style={{ background: a.type === '수행평가' ? '#FFF4ED' : '#ECFDF5' }}>
                   {a.type === '수행평가' ? '📋' : '📝'}

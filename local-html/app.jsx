@@ -1378,20 +1378,22 @@ function LearningPage() {
   const [tempActivityContent, setTempActivityContent] = useState('');
   const [tempActivityType, setTempActivityType] = useState('과제');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  // 아래 목록에서 과제를 선택하면 체크 그리드도 그 과제 기준으로 바뀌고, 선택을 풀면 최신 활동으로 돌아감
+  const activeActivity = selectedAssignment || currentActivity;
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const timerRef = useRef(null);
 
   const handlePointerDown = (studentId) => {
-    if (!currentActivity) return;
+    if (!activeActivity) return;
     timerRef.current = setTimeout(() => {
-      if (currentActivity.submissions?.[studentId]) updateAssignmentSubmissions(currentActivity.id, { [studentId]: null });
+      if (activeActivity.submissions?.[studentId]) updateAssignmentSubmissions(activeActivity.id, { [studentId]: null });
       timerRef.current = null;
     }, 500);
   };
   const handlePointerUp = (studentId) => {
-    if (!currentActivity) return;
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; if (!currentActivity.submissions?.[studentId]) updateAssignmentSubmissions(currentActivity.id, { [studentId]: { timestamp: new Date().toISOString() } }); }
+    if (!activeActivity) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; if (!activeActivity.submissions?.[studentId]) updateAssignmentSubmissions(activeActivity.id, { [studentId]: { timestamp: new Date().toISOString() } }); }
   };
   const handlePointerLeave = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
 
@@ -1413,7 +1415,7 @@ function LearningPage() {
               </div>
               <div className="activity-edit-actions">
                 <button className="activity-btn primary" onClick={() => {
-                  if (tempActivityContent.trim() !== '') { addAssignment({ id: generateUUID(), title: tempActivityContent, subject: '활동', type: tempActivityType, dueDate: toISODate(new Date()), createdAt: new Date().toISOString(), submissions: {}, total: students.length }); showToast('새로운 활동이 추가되었습니다.', 'success'); }
+                  if (tempActivityContent.trim() !== '') { addAssignment({ id: generateUUID(), title: tempActivityContent, subject: '활동', type: tempActivityType, dueDate: toISODate(new Date()), createdAt: new Date().toISOString(), submissions: {}, total: students.length }); showToast('새로운 활동이 추가되었습니다.', 'success'); setSelectedAssignment(null); }
                   setIsEditingActivity(false);
                 }}>저장</button>
                 <button className="activity-btn secondary" onClick={() => { setTempActivityContent(''); setTempActivityType('과제'); setIsEditingActivity(false); }}>취소</button>
@@ -1422,7 +1424,7 @@ function LearningPage() {
           ) : (
             <div className="activity-view-mode">
               <div className="activity-text">
-                {currentActivity ? (<><span className={`badge ${currentActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`}>{currentActivity.type || '수행평가'}</span><span className="activity-label" style={{ marginLeft: '0.5rem' }}>활동 내용:</span><span className="activity-value">{currentActivity.title}</span></>) : (<span className="activity-value">현재 등록된 활동이 없습니다. 새로 추가해 주세요.</span>)}
+                {activeActivity ? (<><span className={`badge ${activeActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`}>{activeActivity.type || '수행평가'}</span><span className="activity-label" style={{ marginLeft: '0.5rem' }}>{selectedAssignment ? '선택한 과제:' : '활동 내용:'}</span><span className="activity-value">{activeActivity.title}</span></>) : (<span className="activity-value">현재 등록된 활동이 없습니다. 새로 추가해 주세요.</span>)}
               </div>
               {isAdmin && <button className="activity-btn edit" onClick={() => { setTempActivityContent(''); setTempActivityType('과제'); setIsEditingActivity(true); }}>추가</button>}
             </div>
@@ -1430,7 +1432,7 @@ function LearningPage() {
         </div>
         <div className="activity-students-grid">
           {students.map(student => {
-            const isCompleted = !!currentActivity?.submissions?.[student.id];
+            const isCompleted = !!activeActivity?.submissions?.[student.id];
             return (<div key={student.id} className={`activity-student-card ${isCompleted ? 'completed' : ''}`} onPointerDown={() => handlePointerDown(student.id)} onPointerUp={() => handlePointerUp(student.id)} onPointerLeave={handlePointerLeave} onContextMenu={(e) => e.preventDefault()}><div className="student-number">{student.number}</div><div className="student-name">{student.name}</div>{isCompleted && <div className="completed-check">✓</div>}</div>);
           })}
         </div>
@@ -1444,7 +1446,7 @@ function LearningPage() {
           const pct = Math.round((submittedCount / total) * 100);
           const remaining = total - submittedCount;
           return (
-            <div key={a.id} className="assignment-card clickable" onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)} style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div key={a.id} className="assignment-card clickable" onClick={() => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a)} style={{ flexDirection: 'column', alignItems: 'flex-start', outline: selectedAssignment?.id === a.id ? '2px solid var(--primary)' : 'none' }}>
               <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: '1rem' }}>
                 <div className="assignment-icon" style={{ background: a.type === '수행평가' ? '#FFF4ED' : '#ECFDF5' }}>{a.type === '수행평가' ? '📋' : '📝'}</div>
                 <div className="assignment-details">

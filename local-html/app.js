@@ -3358,24 +3358,26 @@ function LearningPage() {
   const [tempActivityContent, setTempActivityContent] = useState('');
   const [tempActivityType, setTempActivityType] = useState('과제');
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  // 아래 목록에서 과제를 선택하면 체크 그리드도 그 과제 기준으로 바뀌고, 선택을 풀면 최신 활동으로 돌아감
+  const activeActivity = selectedAssignment || currentActivity;
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const timerRef = useRef(null);
   const handlePointerDown = studentId => {
-    if (!currentActivity) return;
+    if (!activeActivity) return;
     timerRef.current = setTimeout(() => {
-      if (currentActivity.submissions?.[studentId]) updateAssignmentSubmissions(currentActivity.id, {
+      if (activeActivity.submissions?.[studentId]) updateAssignmentSubmissions(activeActivity.id, {
         [studentId]: null
       });
       timerRef.current = null;
     }, 500);
   };
   const handlePointerUp = studentId => {
-    if (!currentActivity) return;
+    if (!activeActivity) return;
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
-      if (!currentActivity.submissions?.[studentId]) updateAssignmentSubmissions(currentActivity.id, {
+      if (!activeActivity.submissions?.[studentId]) updateAssignmentSubmissions(activeActivity.id, {
         [studentId]: {
           timestamp: new Date().toISOString()
         }
@@ -3449,6 +3451,7 @@ function LearningPage() {
           total: students.length
         });
         showToast('새로운 활동이 추가되었습니다.', 'success');
+        setSelectedAssignment(null);
       }
       setIsEditingActivity(false);
     }
@@ -3463,16 +3466,16 @@ function LearningPage() {
     className: "activity-view-mode"
   }, /*#__PURE__*/React.createElement("div", {
     className: "activity-text"
-  }, currentActivity ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
-    className: `badge ${currentActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`
-  }, currentActivity.type || '수행평가'), /*#__PURE__*/React.createElement("span", {
+  }, activeActivity ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    className: `badge ${activeActivity.type === '과제' ? 'badge-success' : 'badge-primary'}`
+  }, activeActivity.type || '수행평가'), /*#__PURE__*/React.createElement("span", {
     className: "activity-label",
     style: {
       marginLeft: '0.5rem'
     }
-  }, "\uD65C\uB3D9 \uB0B4\uC6A9:"), /*#__PURE__*/React.createElement("span", {
+  }, selectedAssignment ? '선택한 과제:' : '활동 내용:'), /*#__PURE__*/React.createElement("span", {
     className: "activity-value"
-  }, currentActivity.title)) : /*#__PURE__*/React.createElement("span", {
+  }, activeActivity.title)) : /*#__PURE__*/React.createElement("span", {
     className: "activity-value"
   }, "\uD604\uC7AC \uB4F1\uB85D\uB41C \uD65C\uB3D9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uC0C8\uB85C \uCD94\uAC00\uD574 \uC8FC\uC138\uC694.")), isAdmin && /*#__PURE__*/React.createElement("button", {
     className: "activity-btn edit",
@@ -3484,7 +3487,7 @@ function LearningPage() {
   }, "\uCD94\uAC00"))), /*#__PURE__*/React.createElement("div", {
     className: "activity-students-grid"
   }, students.map(student => {
-    const isCompleted = !!currentActivity?.submissions?.[student.id];
+    const isCompleted = !!activeActivity?.submissions?.[student.id];
     return /*#__PURE__*/React.createElement("div", {
       key: student.id,
       className: `activity-student-card ${isCompleted ? 'completed' : ''}`,
@@ -3514,7 +3517,8 @@ function LearningPage() {
       onClick: () => setSelectedAssignment(selectedAssignment?.id === a.id ? null : a),
       style: {
         flexDirection: 'column',
-        alignItems: 'flex-start'
+        alignItems: 'flex-start',
+        outline: selectedAssignment?.id === a.id ? '2px solid var(--primary)' : 'none'
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {

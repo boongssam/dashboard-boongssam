@@ -239,9 +239,9 @@ ol {
 }
 .sidebar-logo { display: flex; align-items: center; gap: 0.75rem; overflow: hidden; }
 .logo-icon { font-size: 1.75rem; flex-shrink: 0; width: 36px; text-align: center; }
-.logo-text { white-space: nowrap; transition: opacity var(--transition-fast); }
+.logo-text { min-width: 0; transition: opacity var(--transition-fast); }
 .sidebar.collapsed .logo-text { opacity: 0; width: 0; }
-.logo-text h1 { font-size: 1.125rem; font-weight: 800; color: var(--text-sidebar-title); line-height: 1.2; }
+.logo-text h1 { font-size: 0.9rem; font-weight: 800; color: var(--text-sidebar-title); line-height: 1.2; white-space: normal; }
 .logo-sub { font-size: 0.75rem; color: var(--text-sidebar); font-weight: 500; }
 .sidebar-toggle {
   color: var(--text-sidebar); padding: 0.5rem;
